@@ -15,4 +15,4 @@ class AuctionSerializer(serializers.ModelSerializer):
     class Meta:
         model= Auction
         fields = '__all__'
-        read_only_fields = ['bidder','seller','deadline','latest_bid_date_time' ,'seller_total_bids','bidders','display_currency_value']
+        read_only_fields = ['bidder','seller','deadline','latest_bid_date_time' ,'seller_total_bids','bidders','display_price']

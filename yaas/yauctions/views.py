@@ -6,6 +6,8 @@ from rest_framework import status
 from rest_framework.exceptions import APIException
 from datetime import datetime, timedelta, timezone
 import pytz
+import requests
+from decimal import Decimal
 from users.serializer import AuctionSerializer
 from yauctions.models import Auction
 
@@ -34,9 +36,14 @@ class BannedAuctionException(APIException):
 
 
 class AuctionView(APIView):
-    
+
     serializer_class = AuctionSerializer
     
+    def currency_converter(self, amount, to_currency):
+        r=requests.get('https://openexchangerates.org/api/latest.json', params={'app_id': '80ab8cd3ecdd4965b928a15741c46a81'})
+        currencies=r.json()['rates']
+        return amount * currencies[to_currency.upper()]
+
     def get_auction(self, id):
         try:
             auction = Auction.objects.get(id= id)
@@ -52,12 +59,12 @@ class AuctionView(APIView):
             raise BidTooLowException
         
         instance.seller = request.user
-        if instance.seller==request.user:
-            raise SameSellerException
+        # if instance.seller==request.user:
+        #     raise SameSellerException
         
         instance.bidder = request.user   
-        if instance.bidder.id == int(request.user.id):
-            raise WinningBidderException
+        # if instance.bidder.id == int(request.user.id):
+        #     raise WinningBidderException
         
         bid_time = datetime.now(timezone.utc)
         minutes_apart = instance.deadline - bid_time
@@ -80,10 +87,12 @@ class AuctionView(APIView):
     
     def put(self, request, id):
         instance=self.auction_conditions(request, id)
+        exchanged = self.currency_converter(float(instance.price), request.data['currency'])
         serializer= AuctionSerializer(instance, data=request.data)
-        
+        instance.display_price = Decimal(round(exchanged, 2))
+
         if serializer.is_valid():
-            serializer.save()
+            serializer.save() 
         return Response(serializer.data)
        
     

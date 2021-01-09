@@ -10,6 +10,7 @@ import requests
 from decimal import Decimal
 from users.serializer import AuctionSerializer
 from yauctions.models import Auction
+from yauctions.tasks import task_send_created_email
 
 class SameSellerException(APIException):
     status_code = 500
@@ -59,12 +60,12 @@ class AuctionView(APIView):
             raise BidTooLowException
         
         instance.seller = request.user
-        # if instance.seller==request.user:
-        #     raise SameSellerException
+        if instance.seller==request.user:
+            raise SameSellerException
         
         instance.bidder = request.user   
-        # if instance.bidder.id == int(request.user.id):
-        #     raise WinningBidderException
+        if instance.bidder.id == int(request.user.id):
+            raise WinningBidderException
         
         bid_time = datetime.now(timezone.utc)
         minutes_apart = instance.deadline - bid_time
@@ -75,7 +76,12 @@ class AuctionView(APIView):
         user=request.user
         instance.bidders.add(user)
         instance.bidders.values_list()
+        if request.data['status']=='banned':
+            task_send_banned_email.delay(instance.id)
+            return instance
+              
         
+            
         return instance
 
     
@@ -90,9 +96,11 @@ class AuctionView(APIView):
         exchanged = self.currency_converter(float(instance.price), request.data['currency'])
         serializer= AuctionSerializer(instance, data=request.data)
         instance.display_price = Decimal(round(exchanged, 2))
+        
 
         if serializer.is_valid():
             serializer.save() 
+        task_send_new_bid_email.delay(instance.id)
         return Response(serializer.data)
        
     
@@ -110,6 +118,8 @@ class CreateAndListAuctions(ListAPIView):
 
     def post(self, request):
         serializer =AuctionSerializer(data=request.data)
+        task_send_created_email.delay(request.user.id)
         if serializer.is_valid():
             serializer.save()
+            
         return Response(serializer.data)
